@@ -28,16 +28,8 @@ jobs:
           rustup default stable-x86_64-pc-windows-msvc
       - uses: Swatinem/rust-cache@v2
 
-      - name: Install Node Dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Native Adapters & Resources
-        run: |
-          pnpm i18n
-          pnpm check:generated
-
-      - name: Build Argus Release
-        run: cargo build --release --workspace
+      - name: Build Argus via Official Script
+        run: ./start.bat build
 
       - name: Upload Argus EXE
         uses: actions/upload-artifact@v4
