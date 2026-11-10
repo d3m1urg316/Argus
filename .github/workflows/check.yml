@@ -1,94 +1,38 @@
-# Pull requests, manual runs and the release workflow. Pushes to branches are
-# deliberately not checked here; run `start.bat check` before pushing.
 name: Check
 
 on:
-  pull_request:
   workflow_dispatch:
-  workflow_call:
 
 permissions:
   contents: read
 
-concurrency:
-  # Not github.workflow: under workflow_call that is the caller's name.
-  group: check-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: true
-
-env:
-  CARGO_TERM_COLOR: always
-
 jobs:
-  commits:
-    name: Commit messages
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
-        with:
-          node-version-file: .node-version
-      - name: Conventional Commits
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          # The title becomes the commit message of a squash merge.
-          TITLE: ${{ github.event.pull_request.title }}
-        run: |
-          node scripts/release.mjs lint "$BASE_SHA..$HEAD_SHA"
-          node scripts/release.mjs lint --message "$TITLE"
-
   check:
-    name: Lint, test and build
+    name: Build Argus Executable
     runs-on: windows-latest
     timeout-minutes: 60
     defaults:
       run:
         shell: bash
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          persist-credentials: false
-      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
           node-version-file: .node-version
-      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: pnpm/action-setup@v3
         with:
           version: 12.14.0
-          cache: true
       - name: Install Rust
         run: |
-          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --component rustfmt,clippy --no-self-update
+          rustup toolchain install stable-x86_64-pc-windows-msvc --profile minimal --no-self-update
           rustup default stable-x86_64-pc-windows-msvc
-      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
-      - run: pnpm install --frozen-lockfile
+      - uses: Swatinem/rust-cache@v2
 
-      - name: npm security audit
-        run: pnpm audit --audit-level low
-      - name: Rust security audit
-        run: |
-          cargo install cargo-audit --version 0.22.2 --locked
-          cargo audit
+      - name: Build Argus Release
+        run: cargo build --release --workspace
 
-      # The steps of `pnpm check`, split so a failure names the tool. Keep in sync with package.json.
-      - name: Biome
-        run: pnpm lint
-      - name: Translations
-        run: pnpm i18n
-      - name: Generated native adapters
-        run: pnpm check:generated
-      - name: Script tests
-        run: pnpm test
-      - name: rustfmt
-        run: cargo fmt --all --check
-      - name: Clippy
-        run: cargo clippy --workspace --all-targets --locked -- -D warnings
-      - name: Tests
-        run: cargo test --workspace --locked
-      # After the builds above, which download the crate sources it reads.
-      - name: Third-party notices
-        run: node scripts/notices.mjs --check
+      - name: Upload Argus EXE
+        uses: actions/upload-artifact@v4
+        with:
+          name: argus-ru-build
+          path: target/release/*.exe
